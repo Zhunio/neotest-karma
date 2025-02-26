@@ -369,56 +369,27 @@ local function parsed_json_to_results(data, output_file, consoleOut)
   return tests
 end
 
+local function tree_to_list(node, results)
+  if node.type == "test" then
+    table.insert(results, node)
+  end
+
+  for _, child in ipairs(node) do
+    tree_to_list(child, results)
+  end
+end
+
 ---@param args neotest.RunArgs
 ---@return neotest.RunSpec | nil
 function adapter.build_spec(args)
-  -- local results_path = async.fn.tempname() .. ".json"
   local tree = args.tree
 
   if not tree then
     return
   end
 
-  local tree_data = tree:data()
-  local tree_list = tree:to_list()
-
-  print(vim.inspect(tree_data))
-
   local results = {}
-
-  local function getSuiteResults(node)
-    if node.type == "test" then
-      table.insert(results, node)
-    end
-
-    for _, child in ipairs(node) do
-      getSuiteResults(child)
-    end
-  end
-
-  if args.suite then
-    getSuiteResults(tree_list)
-  end
-
-  local pos = args.tree:data()
-  -- print(vim.inspect(args.tree:to_list()))
-  -- local testNamePattern = "'.*'"
-
-  -- if pos.type == "test" or pos.type == "namespace" then
-  --   -- pos.id in form "path/to/file::Describe text::test text"
-  --   local testName = string.sub(pos.id, string.find(pos.id, "::") + 2)
-  --   testName, _ = string.gsub(testName, "::", " ")
-  --   testNamePattern = escapeTestPattern(testName)
-  --   testNamePattern = pos.is_parameterized
-  --       and parameterized_tests.replaceTestParametersWithRegex(testNamePattern)
-  --     or testNamePattern
-  --   testNamePattern = "'^" .. testNamePattern
-  --   if pos.type == "test" then
-  --     testNamePattern = testNamePattern .. "$'"
-  --   else
-  --     testNamePattern = testNamePattern .. "'"
-  --   end
-  -- end
+  tree_to_list(tree:to_list(), results)
 
   -- local binary = args.jestCommand or getJestCommand(pos.path)
   -- local config = getJestConfig(pos.path) or "jest.config.js"
@@ -439,7 +410,15 @@ function adapter.build_spec(args)
   --   escapeTestPattern(vim.fs.normalize(pos.path)),
   -- })
 
+  local pos = args.tree:data()
   local command = "npm run test:ci"
+
+  if args.suite then
+    -- do nothing
+  else
+    command = command .. " -- --include=" .. pos.path
+  end
+
   local cwd = getCwd(pos.path)
 
   -- creating empty file for streaming results
@@ -450,6 +429,7 @@ function adapter.build_spec(args)
     command = command,
     cwd = cwd,
     context = {
+      suite = args.suite,
       pos = pos,
       results = results,
     },
@@ -473,6 +453,51 @@ function adapter.build_spec(args)
   }
 end
 
+local function parse_failing_test_name_lines(file_path)
+  local file = io.open(file_path, "r")
+  if not file then
+    return results
+  end
+
+  local lines = {}
+  for line in file:lines() do
+    if line:find("Executed") then
+      -- do nothing
+    else
+      if line:find("FAILED") then
+        if line:find("TOTAL") then
+          -- do nothing
+        else
+          -- ^[[1A^[[2K^[[31mChrome Headless 133.0.0.0 (Mac OS 10.15.7) HoldingBasketComponent should create FAILED^[[39m^M
+          table.insert(lines, line)
+        end
+      end
+    end
+  end
+
+  file:close()
+
+  return lines
+end
+
+local function parse_test_name(node)
+  local parts = vim.split(node.id, "::", true)
+  local testname = table.concat(parts, "::", 2)
+  testname = testname:gsub("::", " ")
+
+  return testname
+end
+
+local function test_failed(lines, testname)
+  for _, line in ipairs(lines) do
+    if line:find(testname) then
+      return true
+    end
+  end
+
+  return false
+end
+
 ---@async
 ---@param spec neotest.RunSpec
 ---@param result neotest.StrategyResult
@@ -480,20 +505,13 @@ end
 ---@return table<string, neotest.Result>
 function adapter.results(spec, result, tree)
   local results = {}
+  local failing_test_name_lines = parse_failing_test_name_lines(result.output)
 
-  -- TODO: parse the results from the stream and assign them to the correct test
+  for _, node in ipairs(spec.context.results) do
+    local testname = parse_test_name(node)
+    local testfailed = test_failed(failing_test_name_lines, testname)
 
-  if spec.context.suite then
-    for _, node in ipairs(spec.context.nodes) do
-      results[node.id] = {
-        status = result.code == 0 and "passed" or "failed",
-      }
-    end
-  else
-    local pos_id = spec.context.pos.id
-    results[pos_id] = {
-      status = result.code == 0 and "passed" or "failed",
-    }
+    results[node.id] = { status = testfailed and "failed" or "passed" }
   end
 
   return results
