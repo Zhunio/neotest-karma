@@ -379,7 +379,29 @@ function adapter.build_spec(args)
     return
   end
 
+  local tree_data = tree:data()
+  local tree_list = tree:to_list()
+
+  print(vim.inspect(tree_data))
+
+  local results = {}
+
+  local function getSuiteResults(node)
+    if node.type == "test" then
+      table.insert(results, node)
+    end
+
+    for _, child in ipairs(node) do
+      getSuiteResults(child)
+    end
+  end
+
+  if args.suite then
+    getSuiteResults(tree_list)
+  end
+
   local pos = args.tree:data()
+  -- print(vim.inspect(args.tree:to_list()))
   -- local testNamePattern = "'.*'"
 
   -- if pos.type == "test" or pos.type == "namespace" then
@@ -429,6 +451,7 @@ function adapter.build_spec(args)
     cwd = cwd,
     context = {
       pos = pos,
+      results = results,
     },
     -- stream = function()
     --   return function()
@@ -452,39 +475,28 @@ end
 
 ---@async
 ---@param spec neotest.RunSpec
----@return neotest.Result[]
+---@param result neotest.StrategyResult
+---@param tree neotest.Tree
+---@return table<string, neotest.Result>
 function adapter.results(spec, result, tree)
-  -- spec.context.stop_stream()
-  --
-  -- local output_file = spec.context.results_path
-  --
-  -- local success, data = pcall(lib.files.read, output_file)
-  --
-  -- if not success then
-  --   logger.error("No test output file found ", output_file)
-  --   return {}
-  -- end
-  --
-  -- local ok, parsed = pcall(vim.json.decode, data, { luanil = { object = true } })
-  --
-  -- if not ok then
-  --   logger.error("Failed to parse test output json ", output_file)
-  --   return {}
-  -- end
-  --
-  -- local results = parsed_json_to_results(parsed, output_file, b.output)
+  local results = {}
 
-  -- return results
-  local pos_id = spec.context.pos.id
+  -- TODO: parse the results from the stream and assign them to the correct test
 
-  -- print(vim.inspect(spec.context.pos))
-  -- print(vim.inspect({ [pos_id] = {
-  --   status = result.code == 0 and "passed" or "failed",
-  -- } }))
+  if spec.context.suite then
+    for _, node in ipairs(spec.context.nodes) do
+      results[node.id] = {
+        status = result.code == 0 and "passed" or "failed",
+      }
+    end
+  else
+    local pos_id = spec.context.pos.id
+    results[pos_id] = {
+      status = result.code == 0 and "passed" or "failed",
+    }
+  end
 
-  return { [pos_id] = {
-    status = result.code == 0 and "passed" or "failed",
-  } }
+  return results
 end
 
 local is_callable = function(obj)
