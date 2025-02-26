@@ -2,9 +2,9 @@
 local async = require("neotest.async")
 local lib = require("neotest.lib")
 local logger = require("neotest.logging")
-local util = require("neotest-jest.util")
-local jest_util = require("neotest-jest.jest-util")
-local parameterized_tests = require("neotest-jest.parameterized-tests")
+local util = require("neotest-karma.util")
+local jest_util = require("neotest-karma.jest-util")
+local parameterized_tests = require("neotest-karma.parameterized-tests")
 
 ---@class neotest.JestOptions
 ---@field jestCommand? string|fun(): string
@@ -14,7 +14,7 @@ local parameterized_tests = require("neotest-jest.parameterized-tests")
 ---@field strategy_config? table<string, unknown>|fun(): table<string, unknown>
 
 ---@type neotest.Adapter
-local adapter = { name = "neotest-jest" }
+local adapter = { name = "neotest-karma" }
 
 local rootPackageJson = vim.fn.getcwd() .. "/package.json"
 
@@ -32,7 +32,7 @@ local function rootProjectHasJestDependency()
 
   if parsedPackageJson["dependencies"] then
     for key, _ in pairs(parsedPackageJson["dependencies"]) do
-      if key == "jest" then
+      if key == "karma" then
         return true
       end
     end
@@ -40,7 +40,7 @@ local function rootProjectHasJestDependency()
 
   if parsedPackageJson["devDependencies"] then
     for key, _ in pairs(parsedPackageJson["devDependencies"]) do
-      if key == "jest" then
+      if key == "karma" then
         return true
       end
     end
@@ -68,7 +68,7 @@ local function hasJestDependency(path)
 
   if parsedPackageJson["dependencies"] then
     for key, _ in pairs(parsedPackageJson["dependencies"]) do
-      if key == "jest" then
+      if key == "karma" then
         return true
       end
     end
@@ -76,7 +76,7 @@ local function hasJestDependency(path)
 
   if parsedPackageJson["devDependencies"] then
     for key, _ in pairs(parsedPackageJson["devDependencies"]) do
-      if key == "jest" then
+      if key == "karma" then
         return true
       end
     end
@@ -84,7 +84,7 @@ local function hasJestDependency(path)
 
   if parsedPackageJson["scripts"] then
     for _, value in pairs(parsedPackageJson["scripts"]) do
-      if value == "jest" then
+      if value == "karma" then
         return true
       end
     end
@@ -96,9 +96,6 @@ end
 adapter.root = function(path)
   return lib.files.match_root_pattern("package.json")(path)
 end
-
-local getJestCommand = jest_util.getJestCommand
-local getJestConfig = jest_util.getJestConfig
 
 ---@param file_path? string
 ---@return boolean
@@ -232,7 +229,7 @@ function adapter.discover_positions(path)
 
   local positions = lib.treesitter.parse_positions(path, query, {
     nested_tests = false,
-    build_position = 'require("neotest-jest").build_position',
+    build_position = 'require("neotest-karma").build_position',
   })
 
   local parameterized_tests_positions =
@@ -375,7 +372,7 @@ end
 ---@param args neotest.RunArgs
 ---@return neotest.RunSpec | nil
 function adapter.build_spec(args)
-  local results_path = async.fn.tempname() .. ".json"
+  -- local results_path = async.fn.tempname() .. ".json"
   local tree = args.tree
 
   if not tree then
@@ -383,102 +380,111 @@ function adapter.build_spec(args)
   end
 
   local pos = args.tree:data()
-  local testNamePattern = "'.*'"
+  -- local testNamePattern = "'.*'"
 
-  if pos.type == "test" or pos.type == "namespace" then
-    -- pos.id in form "path/to/file::Describe text::test text"
-    local testName = string.sub(pos.id, string.find(pos.id, "::") + 2)
-    testName, _ = string.gsub(testName, "::", " ")
-    testNamePattern = escapeTestPattern(testName)
-    testNamePattern = pos.is_parameterized
-        and parameterized_tests.replaceTestParametersWithRegex(testNamePattern)
-      or testNamePattern
-    testNamePattern = "'^" .. testNamePattern
-    if pos.type == "test" then
-      testNamePattern = testNamePattern .. "$'"
-    else
-      testNamePattern = testNamePattern .. "'"
-    end
-  end
+  -- if pos.type == "test" or pos.type == "namespace" then
+  --   -- pos.id in form "path/to/file::Describe text::test text"
+  --   local testName = string.sub(pos.id, string.find(pos.id, "::") + 2)
+  --   testName, _ = string.gsub(testName, "::", " ")
+  --   testNamePattern = escapeTestPattern(testName)
+  --   testNamePattern = pos.is_parameterized
+  --       and parameterized_tests.replaceTestParametersWithRegex(testNamePattern)
+  --     or testNamePattern
+  --   testNamePattern = "'^" .. testNamePattern
+  --   if pos.type == "test" then
+  --     testNamePattern = testNamePattern .. "$'"
+  --   else
+  --     testNamePattern = testNamePattern .. "'"
+  --   end
+  -- end
 
-  local binary = args.jestCommand or getJestCommand(pos.path)
-  local config = getJestConfig(pos.path) or "jest.config.js"
-  local command = vim.split(binary, "%s+")
-  if util.path.exists(config) then
-    -- only use config if available
-    table.insert(command, "--config=" .. config)
-  end
+  -- local binary = args.jestCommand or getJestCommand(pos.path)
+  -- local config = getJestConfig(pos.path) or "jest.config.js"
+  -- local command = vim.split(binary, "%s+")
+  -- if util.path.exists(config) then
+  --   -- only use config if available
+  --   table.insert(command, "--config=" .. config)
+  -- end
+  --
+  -- vim.list_extend(command, {
+  --   "--no-coverage",
+  --   "--testLocationInResults",
+  --   "--verbose",
+  --   "--json",
+  --   "--outputFile=" .. results_path,
+  --   "--testNamePattern=" .. testNamePattern,
+  --   "--forceExit",
+  --   escapeTestPattern(vim.fs.normalize(pos.path)),
+  -- })
 
-  vim.list_extend(command, {
-    "--no-coverage",
-    "--testLocationInResults",
-    "--verbose",
-    "--json",
-    "--outputFile=" .. results_path,
-    "--testNamePattern=" .. testNamePattern,
-    "--forceExit",
-    escapeTestPattern(vim.fs.normalize(pos.path)),
-  })
-
+  local command = "npm run test:ci"
   local cwd = getCwd(pos.path)
 
   -- creating empty file for streaming results
-  lib.files.write(results_path, "")
-  local stream_data, stop_stream = util.stream(results_path)
+  -- lib.files.write(results_path, "")
+  -- local stream_data, stop_stream = util.stream(results_path)
 
   return {
     command = command,
     cwd = cwd,
     context = {
-      results_path = results_path,
-      file = pos.path,
-      stop_stream = stop_stream,
+      pos = pos,
     },
-    stream = function()
-      return function()
-        local new_results = stream_data()
-        local ok, parsed = pcall(vim.json.decode, new_results, { luanil = { object = true } })
-
-        if not ok or not parsed.testResults then
-          return {}
-        end
-
-        return parsed_json_to_results(parsed, results_path, nil)
-      end
-    end,
-    strategy = getStrategyConfig(
-      get_default_strategy_config(args.strategy, command, cwd) or {},
-      args
-    ),
-    env = getEnv(args[2] and args[2].env or {}),
+    -- stream = function()
+    --   return function()
+    --     local new_results = stream_data()
+    --     local ok, parsed = pcall(vim.json.decode, new_results, { luanil = { object = true } })
+    --
+    --     if not ok or not parsed.testResults then
+    --       return {}
+    --     end
+    --
+    --     return parsed_json_to_results(parsed, results_path, nil)
+    --   end
+    -- end,
+    -- strategy = getStrategyConfig(
+    --   get_default_strategy_config(args.strategy, command, cwd) or {},
+    --   args
+    -- ),
+    -- env = getEnv(args[2] and args[2].env or {}),
   }
 end
 
 ---@async
 ---@param spec neotest.RunSpec
 ---@return neotest.Result[]
-function adapter.results(spec, b, tree)
-  spec.context.stop_stream()
+function adapter.results(spec, result, tree)
+  -- spec.context.stop_stream()
+  --
+  -- local output_file = spec.context.results_path
+  --
+  -- local success, data = pcall(lib.files.read, output_file)
+  --
+  -- if not success then
+  --   logger.error("No test output file found ", output_file)
+  --   return {}
+  -- end
+  --
+  -- local ok, parsed = pcall(vim.json.decode, data, { luanil = { object = true } })
+  --
+  -- if not ok then
+  --   logger.error("Failed to parse test output json ", output_file)
+  --   return {}
+  -- end
+  --
+  -- local results = parsed_json_to_results(parsed, output_file, b.output)
 
-  local output_file = spec.context.results_path
+  -- return results
+  local pos_id = spec.context.pos.id
 
-  local success, data = pcall(lib.files.read, output_file)
+  -- print(vim.inspect(spec.context.pos))
+  -- print(vim.inspect({ [pos_id] = {
+  --   status = result.code == 0 and "passed" or "failed",
+  -- } }))
 
-  if not success then
-    logger.error("No test output file found ", output_file)
-    return {}
-  end
-
-  local ok, parsed = pcall(vim.json.decode, data, { luanil = { object = true } })
-
-  if not ok then
-    logger.error("Failed to parse test output json ", output_file)
-    return {}
-  end
-
-  local results = parsed_json_to_results(parsed, output_file, b.output)
-
-  return results
+  return { [pos_id] = {
+    status = result.code == 0 and "passed" or "failed",
+  } }
 end
 
 local is_callable = function(obj)

@@ -1,4 +1,4 @@
-local util = require("neotest-jest.util")
+local util = require("neotest-karma.util")
 
 local M = {}
 
